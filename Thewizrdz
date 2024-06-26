@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.0;  // Hardcoded compiler version
+pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
@@ -14,8 +14,14 @@ contract Lottery is Ownable, ReentrancyGuard, VRFConsumerBase {
     event PlayerEntered(address indexed player);
     event WinnerPicked(address indexed winner, uint256 amount);
 
-    constructor(address _vrfCoordinator, address _link, uint256 _fee, bytes32 _keyHash)
+    constructor(
+        address _vrfCoordinator,
+        address _link,
+        uint256 _fee,
+        bytes32 _keyHash
+    )
         VRFConsumerBase(_vrfCoordinator, _link)
+        Ownable(msg.sender)
     {
         keyHash = _keyHash;
         fee = _fee;
@@ -37,9 +43,14 @@ contract Lottery is Ownable, ReentrancyGuard, VRFConsumerBase {
         return false;
     }
 
-    function pickWinner(uint256 _randomness) public onlyOwner nonReentrant {
+    function pickWinner() public onlyOwner nonReentrant {
         require(players.length > 0, "No players in the lottery");
-        uint256 index = _randomness % players.length;
+        require(LINK.balanceOf(address(this)) >= fee, "Not enough LINK to pay fee");
+        requestRandomness(keyHash, fee);
+    }
+
+    function fulfillRandomness(bytes32 /* requestId */, uint256 randomness) internal override {
+        uint256 index = randomness % players.length;
         address winner = players[index];
         recentWinner = winner;
         delete players;  // Reset players array
@@ -57,6 +68,6 @@ contract Lottery is Ownable, ReentrancyGuard, VRFConsumerBase {
         return address(this).balance;
     }
 
-    // Fallback function to receive ether
+    // Fallback function to receive Ether
     receive() external payable {}
 }
