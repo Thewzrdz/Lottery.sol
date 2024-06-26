@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.0;  // Hardcoded compiler version
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@chainlink/contracts/src/v0.8/VRFConsumerBase.sol";
+
+contract Lottery is Ownable, ReentrancyGuard, VRFConsumerBase {
+    address[] public players;
+    address public recentWinner;
+    uint256 public fee;
+    bytes32 public keyHash;
+
+    event PlayerEntered(address indexed player);
+    event WinnerPicked(address indexed winner, uint256 amount);
+
+    constructor(address _vrfCoordinator, address _link, uint256 _fee, bytes32 _keyHash)
+        VRFConsumerBase(_vrfCoordinator, _link)
+    {
+        keyHash = _keyHash;
+        fee = _fee;
+    }
+
+    function enter() public payable {
+        require(msg.value == 0.01 ether, "Minimum ether required to enter is 0.01");
+        require(!hasEntered(msg.sender), "You have already entered the lottery");
+        players.push(msg.sender);
+        emit PlayerEntered(msg.sender);
+    }
+
+    function hasEntered(address player) public view returns (bool) {
+        for (uint i = 0; i < players.length; i++) {
+            if (players[i] == player) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function pickWinner(uint256 _randomness) public onlyOwner nonReentrant {
+        require(players.length > 0, "No players in the lottery");
+        uint256 index = _randomness % players.length;
+        address winner = players[index];
+        recentWinner = winner;
+        delete players;  // Reset players array
+        uint256 prize = address(this).balance;
+        (bool success, ) = payable(winner).call{value: prize}("");
+        require(success, "Transfer failed.");
+        emit WinnerPicked(winner, prize);
+    }
+
+    function getPlayers() public view returns (address[] memory) {
+        return players;
+    }
+
+    function getBalance() public view returns (uint256) {
+        return address(this).balance;
+    }
+
+    // Fallback function to receive ether
+    receive() external payable {}
+}
